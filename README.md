@@ -1,4 +1,4 @@
-# Blobby's Golden Evaluation MVP
+# Blobby's Evaluation MVP
 
 A Streamlit application for comparing and evaluating two AI models' responses to natural language queries about eCommerce data.
 
