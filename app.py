@@ -19,13 +19,13 @@ DATASET = {
 }
 
 # Set up page
-st.set_page_config(page_title="Blobby's Golden Evaluation MVP", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Blobby's Evaluation MVP", page_icon="🤖", layout="wide")
 st.title("Blobby's Evaluation MVP 🤖")
 
 # Model ID configuration
 st.sidebar.header("⚙️ Configure Models")
-model_1_id = st.sidebar.text_input("Model A ID", value="5935d076-0479-48f0-99f0-c114a0670dee")
-model_2_id = st.sidebar.text_input("Model B ID", value="cf2e8f70-fae0-45e7-8e77-3e3f32224794")
+model_1_id = st.sidebar.text_input("Model A ID", value="7f250d4f-75bd-45ab-a58d-22db81174793")
+model_2_id = st.sidebar.text_input("Model B ID", value="e29c35ca-39f6-4a6b-bcb8-0bfc8f5be64b")
 
 # Initialize session state
 for key in ["prompt_text", "evaluations", "feedback_a", "feedback_b",
@@ -49,11 +49,13 @@ def query_data(prompt, model_id):
             json=data
         )
         if response.status_code != 200:
+            st.error(f"API Error: {response.status_code}")
             return None, None
 
         query_dict = response.json()
         query_result = client.run_query_blocking(query_dict)
         if query_result is None:
+            st.error("No query result returned")
             return None, None
 
         result, _ = query_result
@@ -65,7 +67,8 @@ def query_data(prompt, model_id):
 
         return df, query_dict
 
-    except:
+    except Exception as e:
+        st.error(f"Error: {str(e)}")
         return None, None
 
 # Prompt input
@@ -95,22 +98,32 @@ if st.session_state.last_prompt_submitted:
             if df is not None:
                 st.dataframe(df, use_container_width=True)
                 with st.expander("Query Details"):
-                    st.json(query)
+                    if query and "query" in query:
+                        query_details = query["query"]
+                        filtered_query = {
+                            "fields": query_details.get("fields", []),
+                            "filters": query_details.get("filters", {}),
+                            "limit": query_details.get("limit"),
+                            "sort": query_details.get("sorts", [])
+                        }
+                        # Remove None values and empty lists/dicts
+                        filtered_query = {k: v for k, v in filtered_query.items() if v not in [None, [], {}, ""]}
+                        st.json(filtered_query)
 
     st.markdown("### Feedback")
     col1, col2 = st.columns(2)
     with col1:
         st.write("**Model A Rating**")
-        rating_a = st.radio("", ["👍", "👎", "No rating"], key="rating_a", horizontal=True)
+        rating_a = st.radio("Model A Rating", ["👍", "👎"], key="rating_a", horizontal=True, label_visibility="collapsed")
         st.session_state.feedback_a["rating"] = rating_a if rating_a != "No rating" else None
-        note_a = st.text_area("Note for Model A:", value=st.session_state.feedback_a["note"], key="note_a")
+        note_a = st.text_area("Feedback for Model A:", value=st.session_state.feedback_a["note"], key="note_a")
         st.session_state.feedback_a["note"] = note_a
 
     with col2:
         st.write("**Model B Rating**")
-        rating_b = st.radio("", ["👍", "👎", "No rating"], key="rating_b", horizontal=True)
+        rating_b = st.radio("Model B Rating", ["👍", "👎"], key="rating_b", horizontal=True, label_visibility="collapsed")
         st.session_state.feedback_b["rating"] = rating_b if rating_b != "No rating" else None
-        note_b = st.text_area("Note for Model B:", value=st.session_state.feedback_b["note"], key="note_b")
+        note_b = st.text_area("Feedback for Model B:", value=st.session_state.feedback_b["note"], key="note_b")
         st.session_state.feedback_b["note"] = note_b
 
     if st.button("Submit Feedback", key="submit_feedback_combined"):
