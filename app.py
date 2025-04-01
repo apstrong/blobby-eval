@@ -20,18 +20,23 @@ DATASET = {
 
 # Set up page
 st.set_page_config(page_title="Blobby's Evaluation MVP", page_icon="🤖", layout="wide")
-st.title("Blobby's Evaluation MVP 🤖🧪")
+st.title("Blobby's Golden Evaluation MVP")
 
 # Model ID configuration
 st.sidebar.header("⚙️ Configure Models")
 model_1_id = st.sidebar.text_input("Model A ID", value="7f250d4f-75bd-45ab-a58d-22db81174793")
 model_2_id = st.sidebar.text_input("Model B ID", value="e29c35ca-39f6-4a6b-bcb8-0bfc8f5be64b")
 
-# Initialize session state
-for key in ["prompt_text", "evaluations", "feedback_a", "feedback_b",
-            "model_a_result", "model_a_query", "model_b_result", "model_b_query", "last_prompt_submitted"]:
+# Initialize session state variables
+for key in ["feedback_a", "feedback_b", "evaluations", 
+            "model_a_result", "model_a_query", "model_b_result", "model_b_query"]:
     if key not in st.session_state:
-        st.session_state[key] = None if "feedback" not in key else {"rating": None, "note": "", "submitted": False}
+        if key in ["feedback_a", "feedback_b"]:
+            st.session_state[key] = {"rating": None, "note": "", "submitted": False}
+        elif key == "evaluations":
+            st.session_state[key] = []
+        else:
+            st.session_state[key] = None
 
 # Initialize Omni client
 client = OmniAPI(api_key, base_url=base_url)
@@ -73,17 +78,16 @@ def query_data(prompt, model_id):
 
 # Prompt input
 with st.form("prompt_form"):
-    prompt = st.text_input("Ask a question:", value=st.session_state.prompt_text or "")
+    prompt = st.text_input("Ask a question:")
     submitted = st.form_submit_button("✨Let's go✨")
 
+# --- Query Flow ---
 if submitted and prompt.strip():
-    st.session_state.prompt_text = prompt
-    st.session_state.last_prompt_submitted = prompt
     st.session_state.model_a_result, st.session_state.model_a_query = query_data(prompt, model_1_id)
     st.session_state.model_b_result, st.session_state.model_b_query = query_data(prompt, model_2_id)
 
-# Only show results if prompt has been submitted
-if st.session_state.last_prompt_submitted:
+# Show results if we have them
+if st.session_state.model_a_result is not None or st.session_state.model_b_result is not None:
     col1, col2 = st.columns(2)
 
     for label, model_id, df_key, query_key, feedback_key, col in [
@@ -153,7 +157,7 @@ if st.session_state.last_prompt_submitted:
                 "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "model": "Model A",
                 "model_id": model_1_id,
-                "prompt": st.session_state.prompt_text,
+                "prompt": prompt,
                 "feedback": st.session_state.feedback_a["rating"],
                 "note": note_a
             })
@@ -163,7 +167,7 @@ if st.session_state.last_prompt_submitted:
                 "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "model": "Model B",
                 "model_id": model_2_id,
-                "prompt": st.session_state.prompt_text,
+                "prompt": prompt,
                 "feedback": st.session_state.feedback_b["rating"],
                 "note": note_b
             })
