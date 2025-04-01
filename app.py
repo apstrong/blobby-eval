@@ -6,6 +6,7 @@ import pandas as pd
 import json
 import requests
 import random
+import csv
 
 # Load API key and base url from .env
 load_dotenv()
@@ -20,15 +21,15 @@ DATASET = {
 
 # Set up page
 st.set_page_config(page_title="Blobby's Evaluation MVP", page_icon="🤖", layout="wide")
-st.title("Blobby's Golden Evaluation MVP")
+st.title("Blobby's Evaluation MVP")
 
 # Model ID configuration
 st.sidebar.header("⚙️ Configure Models")
 model_1_id = st.sidebar.text_input("Model A ID", value="7f250d4f-75bd-45ab-a58d-22db81174793")
 model_2_id = st.sidebar.text_input("Model B ID", value="e29c35ca-39f6-4a6b-bcb8-0bfc8f5be64b")
 
-# Mode selection
-mode = st.radio("Select Mode", ["Manual Evaluation", "Automated Evaluation"], horizontal=True)
+# Mode selection using tabs
+manual_tab, automated_tab = st.tabs(["Manual Evaluation", "Automated Evaluation"])
 
 # Initialize session state variables
 if "evaluation_suite" not in st.session_state:
@@ -149,7 +150,7 @@ def query_data(prompt, model_id):
         return None, None
 
 # Manual Evaluation
-if mode == "Manual Evaluation":
+with manual_tab:
     # Prompt input
     with st.form("prompt_form"):
         prompt = st.text_input("Ask a question:")
@@ -229,31 +230,67 @@ if mode == "Manual Evaluation":
             st.success("Feedback submitted!")
 
 # Automated Evaluation
-elif mode == "Automated Evaluation":
+with automated_tab:
     st.markdown("### Automated Evaluation Setup")
-    st.markdown("""Add test cases with their expected responses. Each test case should include:
-    1. A question to test
-    2. The expected response (single value, JSON, or CSV format)
-    """)
     
-    # Add new question form
-    with st.form("add_question"):
-        question = st.text_input("Question:")
-        expected_response = st.text_area("Expected Response (single value, JSON, or CSV):", height=150)
-        add_submitted = st.form_submit_button("Add Test Case")
+    # Add tab for choosing input method
+    input_method = st.radio("Choose input method:", ["Upload CSV", "Manual Entry"], horizontal=True)
+    
+    if input_method == "Upload CSV":
+        st.markdown("""Upload a CSV file with test cases. The CSV should have two columns:
+        1. **Question**: The question to test
+        2. **Answer**: The expected response (can be a single value, CSV format, or JSON)
+        """)
         
-        if add_submitted and question and expected_response:
-            if len(st.session_state.evaluation_suite["questions"]) < 5:
-                parsed_response = parse_expected_response(expected_response)
-                if parsed_response is not None:
-                    st.session_state.evaluation_suite["questions"].append({
-                        "question": question,
-                        "expected_response": expected_response,  # Store original string
-                        "parsed_response": parsed_response  # Store parsed value/dataframe
-                    })
-                    st.success("Test case added!")
-            else:
-                st.error("Maximum 5 test cases allowed!")
+        uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+        if uploaded_file is not None:
+            try:
+                # Read CSV with a different delimiter since the test data contains commas
+                df = pd.read_csv(uploaded_file, delimiter=",", quoting=csv.QUOTE_MINIMAL)
+                if "Question" not in df.columns or "Answer" not in df.columns:
+                    st.error("CSV must contain 'Question' and 'Answer' columns")
+                else:
+                    if st.button("Load Test Cases"):
+                        # Clear existing questions
+                        st.session_state.evaluation_suite["questions"] = []
+                        
+                        # Add each row as a test case
+                        for _, row in df.iterrows():
+                            parsed_response = parse_expected_response(row["Answer"])
+                            if parsed_response is not None:
+                                st.session_state.evaluation_suite["questions"].append({
+                                    "question": row["Question"],
+                                    "expected_response": row["Answer"],
+                                    "parsed_response": parsed_response
+                                })
+                        st.success(f"Loaded {len(df)} test cases!")
+            except Exception as e:
+                st.error(f"Error loading CSV: {str(e)}")
+    
+    else:  # Manual Entry
+        st.markdown("""Add test cases with their expected responses. Each test case should include:
+        1. A question to test
+        2. The expected response (single value, JSON, or CSV format)
+        """)
+        
+        # Add new question form
+        with st.form("add_question"):
+            question = st.text_input("Question:")
+            expected_response = st.text_area("Expected Response (single value, JSON, or CSV):", height=150)
+            add_submitted = st.form_submit_button("Add Test Case")
+            
+            if add_submitted and question and expected_response:
+                if len(st.session_state.evaluation_suite["questions"]) < 5:
+                    parsed_response = parse_expected_response(expected_response)
+                    if parsed_response is not None:
+                        st.session_state.evaluation_suite["questions"].append({
+                            "question": question,
+                            "expected_response": expected_response,
+                            "parsed_response": parsed_response
+                        })
+                        st.success("Test case added!")
+                else:
+                    st.error("Maximum 5 test cases allowed!")
 
     # Display added questions
     if st.session_state.evaluation_suite["questions"]:
