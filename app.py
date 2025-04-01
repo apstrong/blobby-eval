@@ -20,7 +20,7 @@ DATASET = {
 
 # Set up page
 st.set_page_config(page_title="Blobby's Evaluation MVP", page_icon="🤖", layout="wide")
-st.title("Blobby's Golden Evaluation MVP 🤖🧪")
+st.title("Blobby's Evaluation MVP 🤖🧪")
 
 # Model ID configuration
 st.sidebar.header("⚙️ Configure Models")
