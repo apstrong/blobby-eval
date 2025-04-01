@@ -20,7 +20,7 @@ DATASET = {
 
 # Set up page
 st.set_page_config(page_title="Blobby's Evaluation MVP", page_icon="🤖", layout="wide")
-st.title("Blobby's Evaluation MVP 🤖")
+st.title("Blobby's Evaluation MVP 🤖🧪")
 
 # Model ID configuration
 st.sidebar.header("⚙️ Configure Models")
@@ -96,7 +96,27 @@ if st.session_state.last_prompt_submitted:
             query = st.session_state[query_key]
 
             if df is not None:
-                st.dataframe(df, use_container_width=True)
+                if df.shape == (1, 1):
+                    value = df.iloc[0, 0]
+                    column_name = df.columns[0]
+                    col_lower = column_name.lower().replace(" ", "_")
+                    
+                    if "total_orders" in col_lower or "total_order" in col_lower:
+                        formatted_value = f"{int(float(str(value).replace(',', '').replace('$', ''))):,}" if pd.notnull(value) else value
+                    elif any(keyword in col_lower for keyword in ["sale_price", "margin"]):
+                        formatted_value = f"${float(str(value).replace(',', '').replace('$', '')):,.2f}" if pd.notnull(value) else value
+                    else:
+                        formatted_value = value
+                    
+                    # Create a single-row dataframe with the formatted value
+                    result_df = pd.DataFrame({column_name: [formatted_value]})
+                    result_df.index = [1]  # Start index at 1
+                    st.dataframe(result_df, use_container_width=True)
+                else:
+                    # Reset index to start at 1
+                    df.index = range(1, len(df) + 1)
+                    st.dataframe(df, use_container_width=True)
+                
                 with st.expander("Query Details"):
                     if query and "query" in query:
                         query_details = query["query"]
@@ -149,18 +169,48 @@ if st.session_state.last_prompt_submitted:
             })
         st.success("Feedback submitted!")
 
-# Evaluation history
+# Show evaluation history
 if st.session_state.evaluations:
-    evals_df = pd.DataFrame(st.session_state.evaluations)
+    
+    # Convert evaluations to DataFrame
+    df_evals = pd.DataFrame(st.session_state.evaluations)
+    
+    # Create summary by model
+    summary = df_evals.groupby('model').agg({
+        'feedback': [
+            ('Total Evaluations', 'count'),
+            ('👍 Count', lambda x: (x == '👍').sum()),
+            ('👎 Count', lambda x: (x == '👎').sum()),
+            ('Net Positive %', lambda x: (x == '👍').mean() * 100)
+        ]
+    })
+    
+    # Flatten column names
+    summary.columns = summary.columns.get_level_values(1)
+    
+    # Format the percentage column
+    summary['Net Positive %'] = summary['Net Positive %'].apply(lambda x: f"{x:.1f}%")
+    
+    # Display full history
     st.markdown("### Evaluation History")
-    st.dataframe(evals_df, use_container_width=True)
+    history_df = df_evals.sort_values('timestamp', ascending=False).copy()
+    history_df.index = range(1, len(history_df) + 1)
+    st.dataframe(
+        history_df,
+        column_config={
+            "timestamp": "Timestamp",
+            "model": "Model",
+            "prompt": "Prompt",
+            "feedback": "Rating",
+            "note": "Feedback"
+        }
+    )
 
-    st.markdown("### 📊 Model Performance Summary")
-    grouped = evals_df.groupby("model")["feedback"].value_counts().unstack().fillna(0)
-    grouped["Total"] = grouped.sum(axis=1)
-    grouped["Net Positive %"] = (grouped.get("👍", 0) / grouped["Total"] * 100).round(1)
-    grouped = grouped.rename(columns={"👍": "Thumbs Up", "👎": "Thumbs Down"})
-    st.dataframe(grouped.reset_index(), use_container_width=True)
+    # Display summary
+    st.markdown("### Model Performance Summary")
+    st.dataframe(summary)
+    
+
 
 st.markdown("""
     <div style="text-align: center; color: #666; font-size: 0.8rem; font-style: italic;">
