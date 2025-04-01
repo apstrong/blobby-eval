@@ -27,7 +27,17 @@ st.sidebar.header("⚙️ Configure Models")
 model_1_id = st.sidebar.text_input("Model A ID", value="7f250d4f-75bd-45ab-a58d-22db81174793")
 model_2_id = st.sidebar.text_input("Model B ID", value="e29c35ca-39f6-4a6b-bcb8-0bfc8f5be64b")
 
+# Mode selection
+mode = st.radio("Select Mode", ["Manual Evaluation", "Automated Evaluation"], horizontal=True)
+
 # Initialize session state variables
+if "evaluation_suite" not in st.session_state:
+    st.session_state.evaluation_suite = {
+        "questions": [],
+        "current_question": 0,
+        "running": False
+    }
+
 for key in ["feedback_a", "feedback_b", "evaluations", 
             "model_a_result", "model_a_query", "model_b_result", "model_b_query"]:
     if key not in st.session_state:
@@ -175,46 +185,55 @@ if st.session_state.model_a_result is not None or st.session_state.model_b_resul
 
 # Show evaluation history
 if st.session_state.evaluations:
-    
     # Convert evaluations to DataFrame
     df_evals = pd.DataFrame(st.session_state.evaluations)
     
-    # Create summary by model
-    summary = df_evals.groupby('model').agg({
-        'feedback': [
-            ('Total Evaluations', 'count'),
-            ('👍 Count', lambda x: (x == '👍').sum()),
-            ('👎 Count', lambda x: (x == '👎').sum()),
-            ('Net Positive %', lambda x: (x == '👍').mean() * 100)
-        ]
-    })
+    # Create summary based on evaluation type
+    if 'result' in df_evals.columns:  # Automatic comparison results
+        summary = df_evals.groupby('model').agg({
+            'result': [
+                ('Total Tests', 'count'),
+                ('Passed', lambda x: (x == '✅ PASS').sum()),
+                ('Failed', lambda x: (x == '❌ FAIL').sum()),
+                ('Pass Rate %', lambda x: (x == '✅ PASS').mean() * 100)
+            ]
+        })
+        summary.columns = summary.columns.get_level_values(1)
+        summary['Pass Rate %'] = summary['Pass Rate %'].apply(lambda x: f"{x:.1f}%")
+    else:  # Manual feedback
+        summary = df_evals.groupby('model').agg({
+            'feedback': [
+                ('Total Evaluations', 'count'),
+                ('👍 Count', lambda x: (x == '👍').sum()),
+                ('👎 Count', lambda x: (x == '👎').sum()),
+                ('Net Positive %', lambda x: (x == '👍').mean() * 100)
+            ]
+        })
+        summary.columns = summary.columns.get_level_values(1)
+        summary['Net Positive %'] = summary['Net Positive %'].apply(lambda x: f"{x:.1f}%")
     
-    # Flatten column names
-    summary.columns = summary.columns.get_level_values(1)
-    
-    # Format the percentage column
-    summary['Net Positive %'] = summary['Net Positive %'].apply(lambda x: f"{x:.1f}%")
-    
-    # Display full history
-    st.markdown("### Evaluation History")
-    history_df = df_evals.sort_values('timestamp', ascending=False).copy()
-    history_df.index = range(1, len(history_df) + 1)
-    st.dataframe(
-        history_df,
-        column_config={
-            "timestamp": "Timestamp",
-            "model": "Model",
-            "prompt": "Prompt",
-            "feedback": "Rating",
-            "note": "Feedback"
-        }
-    )
-
     # Display summary
-    st.markdown("### Model Performance Summary")
-    st.dataframe(summary)
+    st.markdown("### Evaluation Results")
+    st.dataframe(summary.astype(str))
     
-
+    # Display detailed history
+    st.markdown("### Detailed History")
+    if 'result' in df_evals.columns:
+        # Convert DataFrame to string format to avoid Arrow serialization issues
+        history_df = df_evals.sort_values('timestamp', ascending=False).copy()
+        for col in history_df.columns:
+            if col == 'actual_response' and isinstance(history_df[col].iloc[0], dict):
+                # Convert dictionary to CSV string for actual_response
+                history_df[col] = history_df[col].apply(lambda x: pd.DataFrame(x).to_csv(index=False) if isinstance(x, dict) else str(x))
+            else:
+                history_df[col] = history_df[col].astype(str)
+        
+        st.dataframe(history_df[['timestamp', 'model', 'prompt', 'expected_response', 'actual_response', 'result']])
+    else:
+        history_df = df_evals.sort_values('timestamp', ascending=False)[
+            ['timestamp', 'model', 'prompt', 'feedback', 'note']
+        ]
+        st.dataframe(history_df.astype(str))
 
 st.markdown("""
     <div style="text-align: center; color: #666; font-size: 0.8rem; font-style: italic;">
