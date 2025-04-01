@@ -51,6 +51,73 @@ for key in ["feedback_a", "feedback_b", "evaluations",
 # Initialize Omni client
 client = OmniAPI(api_key, base_url=base_url)
 
+def parse_expected_response(response_str):
+    """Parse expected response string into either a single value or dataframe."""
+    try:
+        # First try to parse as JSON
+        try:
+            data = json.loads(response_str)
+            if isinstance(data, dict):
+                # Create DataFrame preserving original column names
+                df = pd.DataFrame(data)
+                return df
+            elif isinstance(data, list):
+                # Create DataFrame from list of dicts preserving original column names
+                df = pd.DataFrame(data)
+                return df
+        except json.JSONDecodeError:
+            pass
+        
+        # Try to parse as CSV
+        try:
+            # StringIO to simulate file for read_csv
+            from io import StringIO
+            df = pd.read_csv(StringIO(response_str))
+            return df
+        except:
+            pass
+        
+        # If not JSON or CSV, treat as single value
+        return response_str
+    except Exception as e:
+        st.error(f"Error parsing expected response: {str(e)}")
+        return None
+
+def compare_results(result_df, expected_response):
+    """Compare query results with expected response."""
+    try:
+        # If expected response is a dataframe
+        if isinstance(expected_response, pd.DataFrame):
+            # Check if same number of rows
+            if result_df.shape[0] != expected_response.shape[0]:
+                return False
+            
+            # Convert both dataframes to sets of tuples for order-independent comparison
+            # First sort each dataframe's columns alphabetically
+            result_cols = sorted(result_df.columns)
+            expected_cols = sorted(expected_response.columns)
+            
+            # Check if same columns exist (ignoring order)
+            if set(result_cols) != set(expected_cols):
+                return False
+            
+            # Convert each row to a tuple of values, sorted by column name
+            result_rows = {tuple(sorted(row.items())) for _, row in result_df[result_cols].to_dict('index').items()}
+            expected_rows = {tuple(sorted(row.items())) for _, row in expected_response[expected_cols].to_dict('index').items()}
+            
+            # Compare the sets of rows
+            return result_rows == expected_rows
+            
+        # If result is a single value
+        elif result_df.shape == (1, 1):
+            return str(result_df.iloc[0, 0]) == str(expected_response)
+        else:
+            st.warning("Result is a dataframe but expected response is not. Cannot compare directly.")
+            return False
+    except Exception as e:
+        st.error(f"Comparison error: {str(e)}")
+        return False
+
 def query_data(prompt, model_id):
     try:
         data = {
@@ -75,113 +142,182 @@ def query_data(prompt, model_id):
 
         result, _ = query_result
         df = result.to_pandas()
-
-        # Clean up
-        df = df.loc[:, ~df.columns.str.contains("raw|pivot|sort", case=False)]
-        df.columns = [col.split(".")[-1].replace("_", " ") for col in df.columns]
-
         return df, query_dict
 
     except Exception as e:
         st.error(f"Error: {str(e)}")
         return None, None
 
-# Prompt input
-with st.form("prompt_form"):
-    prompt = st.text_input("Ask a question:")
-    submitted = st.form_submit_button("✨Let's go✨")
+# Manual Evaluation
+if mode == "Manual Evaluation":
+    # Prompt input
+    with st.form("prompt_form"):
+        prompt = st.text_input("Ask a question:")
+        submitted = st.form_submit_button("✨Let's go✨")
 
-# --- Query Flow ---
-if submitted and prompt.strip():
-    st.session_state.model_a_result, st.session_state.model_a_query = query_data(prompt, model_1_id)
-    st.session_state.model_b_result, st.session_state.model_b_query = query_data(prompt, model_2_id)
+    # --- Query Flow ---
+    if submitted and prompt.strip():
+        st.session_state.model_a_result, st.session_state.model_a_query = query_data(prompt, model_1_id)
+        st.session_state.model_b_result, st.session_state.model_b_query = query_data(prompt, model_2_id)
 
-# Show results if we have them
-if st.session_state.model_a_result is not None or st.session_state.model_b_result is not None:
-    col1, col2 = st.columns(2)
+    # Show results if we have them
+    if st.session_state.model_a_result is not None or st.session_state.model_b_result is not None:
+        col1, col2 = st.columns(2)
 
-    for label, model_id, df_key, query_key, feedback_key, col in [
-        ("Model A", model_1_id, "model_a_result", "model_a_query", "feedback_a", col1),
-        ("Model B", model_2_id, "model_b_result", "model_b_query", "feedback_b", col2)
-    ]:
-        with col:
-            st.markdown(f"### {label} Results")
-            df = st.session_state[df_key]
-            query = st.session_state[query_key]
+        for label, model_id, df_key, query_key, feedback_key, col in [
+            ("Model A", model_1_id, "model_a_result", "model_a_query", "feedback_a", col1),
+            ("Model B", model_2_id, "model_b_result", "model_b_query", "feedback_b", col2)
+        ]:
+            with col:
+                st.markdown(f"### {label} Results")
+                df = st.session_state[df_key]
+                query = st.session_state[query_key]
 
-            if df is not None:
-                if df.shape == (1, 1):
-                    value = df.iloc[0, 0]
-                    column_name = df.columns[0]
-                    col_lower = column_name.lower().replace(" ", "_")
-                    
-                    if "total_orders" in col_lower or "total_order" in col_lower:
-                        formatted_value = f"{int(float(str(value).replace(',', '').replace('$', ''))):,}" if pd.notnull(value) else value
-                    elif any(keyword in col_lower for keyword in ["sale_price", "margin"]):
-                        formatted_value = f"${float(str(value).replace(',', '').replace('$', '')):,.2f}" if pd.notnull(value) else value
-                    else:
-                        formatted_value = value
-                    
-                    # Create a single-row dataframe with the formatted value
-                    result_df = pd.DataFrame({column_name: [formatted_value]})
-                    result_df.index = [1]  # Start index at 1
-                    st.dataframe(result_df, use_container_width=True)
-                else:
+                if df is not None:
                     # Reset index to start at 1
                     df.index = range(1, len(df) + 1)
                     st.dataframe(df, use_container_width=True)
-                
-                with st.expander("Query Details"):
-                    if query and "query" in query:
-                        query_details = query["query"]
-                        filtered_query = {
-                            "fields": query_details.get("fields", []),
-                            "filters": query_details.get("filters", {}),
-                            "limit": query_details.get("limit"),
-                            "sort": query_details.get("sorts", [])
-                        }
-                        # Remove None values and empty lists/dicts
-                        filtered_query = {k: v for k, v in filtered_query.items() if v not in [None, [], {}, ""]}
-                        st.json(filtered_query)
+                    
+                    with st.expander("Query Details"):
+                        if query and "query" in query:
+                            query_details = query["query"]
+                            filtered_query = {
+                                "fields": query_details.get("fields", []),
+                                "filters": query_details.get("filters", {}),
+                                "limit": query_details.get("limit"),
+                                "sort": query_details.get("sorts", [])
+                            }
+                            # Remove None values and empty lists/dicts
+                            filtered_query = {k: v for k, v in filtered_query.items() if v not in [None, [], {}, ""]}
+                            st.json(filtered_query)
 
-    st.markdown("### Feedback")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("**Model A Rating**")
-        rating_a = st.radio("Model A Rating", ["👍", "👎"], key="rating_a", horizontal=True, label_visibility="collapsed")
-        st.session_state.feedback_a["rating"] = rating_a if rating_a != "No rating" else None
-        note_a = st.text_area("Feedback for Model A:", value=st.session_state.feedback_a["note"], key="note_a")
-        st.session_state.feedback_a["note"] = note_a
+        st.markdown("### Feedback")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**Model A Rating**")
+            rating_a = st.radio("Model A Rating", ["👍", "👎"], key="rating_a", horizontal=True, label_visibility="collapsed")
+            st.session_state.feedback_a["rating"] = rating_a if rating_a != "No rating" else None
+            note_a = st.text_area("Feedback for Model A:", value=st.session_state.feedback_a["note"], key="note_a")
+            st.session_state.feedback_a["note"] = note_a
 
-    with col2:
-        st.write("**Model B Rating**")
-        rating_b = st.radio("Model B Rating", ["👍", "👎"], key="rating_b", horizontal=True, label_visibility="collapsed")
-        st.session_state.feedback_b["rating"] = rating_b if rating_b != "No rating" else None
-        note_b = st.text_area("Feedback for Model B:", value=st.session_state.feedback_b["note"], key="note_b")
-        st.session_state.feedback_b["note"] = note_b
+        with col2:
+            st.write("**Model B Rating**")
+            rating_b = st.radio("Model B Rating", ["👍", "👎"], key="rating_b", horizontal=True, label_visibility="collapsed")
+            st.session_state.feedback_b["rating"] = rating_b if rating_b != "No rating" else None
+            note_b = st.text_area("Feedback for Model B:", value=st.session_state.feedback_b["note"], key="note_b")
+            st.session_state.feedback_b["note"] = note_b
 
-    if st.button("Submit Feedback", key="submit_feedback_combined"):
-        if st.session_state.feedback_a["rating"]:
-            st.session_state.evaluations = st.session_state.evaluations or []
-            st.session_state.evaluations.append({
-                "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "model": "Model A",
-                "model_id": model_1_id,
-                "prompt": prompt,
-                "feedback": st.session_state.feedback_a["rating"],
-                "note": note_a
-            })
-        if st.session_state.feedback_b["rating"]:
-            st.session_state.evaluations = st.session_state.evaluations or []
-            st.session_state.evaluations.append({
-                "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "model": "Model B",
-                "model_id": model_2_id,
-                "prompt": prompt,
-                "feedback": st.session_state.feedback_b["rating"],
-                "note": note_b
-            })
-        st.success("Feedback submitted!")
+        if st.button("Submit Feedback", key="submit_feedback_combined"):
+            if st.session_state.feedback_a["rating"]:
+                st.session_state.evaluations.append({
+                    "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "model": "Model A",
+                    "model_id": model_1_id,
+                    "prompt": prompt,
+                    "feedback": st.session_state.feedback_a["rating"],
+                    "note": note_a
+                })
+            if st.session_state.feedback_b["rating"]:
+                st.session_state.evaluations.append({
+                    "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "model": "Model B",
+                    "model_id": model_2_id,
+                    "prompt": prompt,
+                    "feedback": st.session_state.feedback_b["rating"],
+                    "note": note_b
+                })
+            st.success("Feedback submitted!")
+
+# Automated Evaluation
+elif mode == "Automated Evaluation":
+    st.markdown("### Automated Evaluation Setup")
+    st.markdown("""Add test cases with their expected responses. Each test case should include:
+    1. A question to test
+    2. The expected response (single value, JSON, or CSV format)
+    """)
+    
+    # Add new question form
+    with st.form("add_question"):
+        question = st.text_input("Question:")
+        expected_response = st.text_area("Expected Response (single value, JSON, or CSV):", height=150)
+        add_submitted = st.form_submit_button("Add Test Case")
+        
+        if add_submitted and question and expected_response:
+            if len(st.session_state.evaluation_suite["questions"]) < 5:
+                parsed_response = parse_expected_response(expected_response)
+                if parsed_response is not None:
+                    st.session_state.evaluation_suite["questions"].append({
+                        "question": question,
+                        "expected_response": expected_response,  # Store original string
+                        "parsed_response": parsed_response  # Store parsed value/dataframe
+                    })
+                    st.success("Test case added!")
+            else:
+                st.error("Maximum 5 test cases allowed!")
+
+    # Display added questions
+    if st.session_state.evaluation_suite["questions"]:
+        st.markdown("### Test Cases")
+        for i, q in enumerate(st.session_state.evaluation_suite["questions"]):
+            with st.expander(f"Test Case {i+1}"):
+                st.write(f"**Question:** {q['question']}")
+                st.write("**Expected Response:**")
+                if isinstance(q['parsed_response'], pd.DataFrame):
+                    st.dataframe(q['parsed_response'])
+                else:
+                    st.write(q['expected_response'])
+                if st.button(f"Remove Test Case {i+1}"):
+                    st.session_state.evaluation_suite["questions"].pop(i)
+                    st.rerun()
+
+        # Start evaluation suite button
+        if len(st.session_state.evaluation_suite["questions"]) > 0:
+            if st.button("Run All Tests"):
+                st.session_state.evaluation_suite["running"] = True
+                st.rerun()
+
+    # Run evaluation suite
+    if st.session_state.evaluation_suite["running"]:
+        st.markdown("### Running Tests...")
+        progress_bar = st.progress(0)
+        
+        # Run through all questions automatically
+        for idx, question_data in enumerate(st.session_state.evaluation_suite["questions"]):
+            progress_bar.progress((idx + 1) / len(st.session_state.evaluation_suite["questions"]))
+            
+            # Query both models
+            model_a_result, model_a_query = query_data(question_data['question'], model_1_id)
+            model_b_result, model_b_query = query_data(question_data['question'], model_2_id)
+
+            # Compare results and store evaluation
+            if model_a_result is not None:
+                model_a_passed = compare_results(model_a_result, question_data['parsed_response'])
+                st.session_state.evaluations.append({
+                    "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "model": "Model A",
+                    "model_id": model_1_id,
+                    "prompt": question_data['question'],
+                    "expected_response": question_data['expected_response'],
+                    "actual_response": model_a_result.to_csv(index=False) if isinstance(question_data['parsed_response'], pd.DataFrame) else str(model_a_result.iloc[0, 0]),
+                    "result": "✅ PASS" if model_a_passed else "❌ FAIL"
+                })
+
+            if model_b_result is not None:
+                model_b_passed = compare_results(model_b_result, question_data['parsed_response'])
+                st.session_state.evaluations.append({
+                    "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "model": "Model B",
+                    "model_id": model_2_id,
+                    "prompt": question_data['question'],
+                    "expected_response": question_data['expected_response'],
+                    "actual_response": model_b_result.to_csv(index=False) if isinstance(question_data['parsed_response'], pd.DataFrame) else str(model_b_result.iloc[0, 0]),
+                    "result": "✅ PASS" if model_b_passed else "❌ FAIL"
+                })
+
+        # Complete the evaluation
+        progress_bar.progress(1.0)
+        st.session_state.evaluation_suite["running"] = False
+        st.success("🎉 Test Suite Complete! Check the results below.")
 
 # Show evaluation history
 if st.session_state.evaluations:
