@@ -31,8 +31,8 @@ pip install -r requirements.txt
 
 4. Create a `.env` file in the project root with your API credentials:
 ```
-API_KEY=your_api_key_here
-API_URL=your_api_url_here
+OMNI_API_KEY=your_api_key_here
+OMNI_BASE_URL=your_api_base_url_here
 ```
 
 ## Usage
@@ -44,10 +44,12 @@ streamlit run app.py
 
 2. Open your browser and navigate to the URL shown in the terminal (typically http://localhost:8501)
 
-3. Enter your query in the text input field
+3. Configure your model URLs in the sidebar
 
-4. Compare the responses from both models
+4. Enter your query in the text input field
 
-5. Provide feedback using the thumbs up/down buttons and optional notes
+5. Compare the responses from both models
 
-6. View your evaluation history at the bottom of the page
+6. Provide feedback using the thumbs up/down buttons and optional notes
+
+7. View your evaluation history at the bottom of the page

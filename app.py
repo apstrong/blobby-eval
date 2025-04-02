@@ -13,6 +13,14 @@ load_dotenv()
 api_key = os.getenv("OMNI_API_KEY")
 base_url = os.getenv("OMNI_BASE_URL")
 
+if not api_key:
+    st.error("Please set OMNI_API_KEY in your .env file")
+    st.stop()
+
+if not base_url:
+    st.error("Please set OMNI_BASE_URL in your .env file")
+    st.stop()
+
 # Define dataset info
 DATASET = {
     "topic": "orders_ai",
@@ -34,22 +42,16 @@ def extract_model_id_from_url(url):
     except:
         return None
 
+# Initialize Omni client
+client = OmniAPI(api_key, base_url=base_url)
+
 # Environment configuration
 st.sidebar.header("⚙️ Configuration")
-api_key = st.sidebar.text_input("API Key", 
-                               type="password",
-                               value=st.session_state.get('api_key', ''),
-                               help="Enter your Omni API key")
-base_url = st.sidebar.text_input("Base URL", 
-                                value=st.session_state.get('base_url', 'https://partners.omniapp.co'),
-                                help="Enter the Omni API base URL")
 topic_name = st.sidebar.text_input("Topic Name",
                                   value=st.session_state.get('topic_name', 'orders_ai'),
                                   help="Enter the topic name for queries")
 
 # Store in session state
-st.session_state['api_key'] = api_key
-st.session_state['base_url'] = base_url
 st.session_state['topic_name'] = topic_name
 
 # Model configuration
@@ -90,9 +92,6 @@ for key in ["feedback_a", "feedback_b", "evaluations",
             st.session_state[key] = []
         else:
             st.session_state[key] = None
-
-# Initialize Omni client
-client = OmniAPI(st.session_state['api_key'], base_url=st.session_state['base_url'])
 
 def parse_expected_response(response_str):
     """Parse expected response string into either a single value or dataframe."""
@@ -174,8 +173,8 @@ def query_data(prompt, model_id):
         }
         
         response = requests.post(
-            f"{st.session_state['base_url']}/api/unstable/ai/generate-query",
-            headers={"Authorization": f"Bearer {st.session_state['api_key']}", "Content-Type": "application/json"},
+            f"{base_url}/api/unstable/ai/generate-query",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json=data
         )
         
