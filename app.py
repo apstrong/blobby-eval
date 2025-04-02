@@ -35,19 +35,22 @@ def extract_model_id_from_url(url):
         return None
 
 # Environment configuration
-st.sidebar.header("Configuration")
-base_url = st.sidebar.text_input("Base URL", 
-                                value=st.session_state.get('base_url', 'https://partners.omniapp.co'),
-                                help="Enter the Omni API base URL")
+st.sidebar.header("🔑 Environment Setup")
 api_key = st.sidebar.text_input("API Key", 
                                type="password",
                                value=st.session_state.get('api_key', ''),
-                               help="Enter your Omni API key. Your API key is only used during this session and is not stored or logged")
-
+                               help="Enter your Omni API key")
+base_url = st.sidebar.text_input("Base URL", 
+                                value=st.session_state.get('base_url', 'https://partners.omniapp.co'),
+                                help="Enter the Omni API base URL")
+topic_name = st.sidebar.text_input("Topic Name",
+                                  value=st.session_state.get('topic_name', 'orders_ai'),
+                                  help="Enter the topic name for queries")
 
 # Store in session state
 st.session_state['api_key'] = api_key
 st.session_state['base_url'] = base_url
+st.session_state['topic_name'] = topic_name
 
 # Model configuration
 model_a_url = st.sidebar.text_input("Model A URL", 
@@ -161,7 +164,7 @@ def compare_results(result_df, expected_response):
 def query_data(prompt, model_id):
     try:
         data = {
-            "currentTopicName": DATASET["topic"],
+            "currentTopicName": st.session_state['topic_name'],
             "modelId": model_id,
             "prompt": prompt
         }
