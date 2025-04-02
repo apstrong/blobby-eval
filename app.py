@@ -7,7 +7,6 @@ import json
 import requests
 import random
 import csv
-import psycopg2
 
 # Load API key and base url from .env
 load_dotenv()
