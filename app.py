@@ -35,7 +35,7 @@ def extract_model_id_from_url(url):
         return None
 
 # Environment configuration
-st.sidebar.header("🔑 Environment Setup")
+st.sidebar.header("⚙️ Configuration")
 api_key = st.sidebar.text_input("API Key", 
                                type="password",
                                value=st.session_state.get('api_key', ''),
