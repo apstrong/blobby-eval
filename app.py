@@ -7,6 +7,7 @@ import json
 import requests
 import random
 import csv
+import psycopg2
 
 # Load API key and base url from .env
 load_dotenv()
@@ -23,10 +24,49 @@ DATASET = {
 st.set_page_config(page_title="Blobby's Evaluation Suite", page_icon="🤖", layout="wide")
 st.title("Blobby's Evaluation Suite 🤖🧪")
 
-# Model ID configuration
-st.sidebar.header("⚙️ Configure Models")
-model_1_id = st.sidebar.text_input("Model A ID", value="7f250d4f-75bd-45ab-a58d-22db81174793")
-model_2_id = st.sidebar.text_input("Model B ID", value="e29c35ca-39f6-4a6b-bcb8-0bfc8f5be64b")
+def extract_model_id_from_url(url):
+    """Extract model ID from Omni URL."""
+    try:
+        # Split by /models/ and take the second part
+        model_part = url.split('/models/')[1]
+        # Take everything before the next slash or end of string
+        model_id = model_part.split('/')[0]
+        return model_id
+    except:
+        return None
+
+# Environment configuration
+st.sidebar.header("Configuration")
+base_url = st.sidebar.text_input("Base URL", 
+                                value=st.session_state.get('base_url', 'https://partners.omniapp.co'),
+                                help="Enter the Omni API base URL")
+api_key = st.sidebar.text_input("API Key", 
+                               type="password",
+                               value=st.session_state.get('api_key', ''),
+                               help="Enter your Omni API key. Your API key is only used during this session and is not stored or logged")
+
+
+# Store in session state
+st.session_state['api_key'] = api_key
+st.session_state['base_url'] = base_url
+
+# Model configuration
+model_a_url = st.sidebar.text_input("Model A URL", 
+                                   value="https://partners.omniapp.co/models/7f250d4f-75bd-45ab-a58d-22db81174793/ide/model?mode=combined",
+                                   help="Enter the Omni URL from the IDE for the first model you want to evaluate")
+model_b_url = st.sidebar.text_input("Model B URL", 
+                                   value="https://partners.omniapp.co/models/e29c35ca-39f6-4a6b-bcb8-0bfc8f5be64b/ide/model?mode=combined",
+                                   help="Enter the Omni URL from the IDE for the first model you want to evaluate")
+
+# Extract model IDs from URLs
+model_1_id = extract_model_id_from_url(model_a_url)
+model_2_id = extract_model_id_from_url(model_b_url)
+
+if not model_1_id:
+    st.sidebar.error("Invalid URL format for Model A. Please enter a valid Omni model URL.")
+
+if not model_2_id:
+    st.sidebar.error("Invalid URL format for Model B. Please enter a valid Omni model URL.")
 
 # Mode selection using tabs
 manual_tab, automated_tab = st.tabs(["Manual Evaluation", "Automated Evaluation"])
@@ -50,7 +90,7 @@ for key in ["feedback_a", "feedback_b", "evaluations",
             st.session_state[key] = None
 
 # Initialize Omni client
-client = OmniAPI(api_key, base_url=base_url)
+client = OmniAPI(st.session_state['api_key'], base_url=st.session_state['base_url'])
 
 def parse_expected_response(response_str):
     """Parse expected response string into either a single value or dataframe."""
@@ -127,8 +167,8 @@ def query_data(prompt, model_id):
             "prompt": prompt
         }
         response = requests.post(
-            f"{base_url}/api/unstable/ai/generate-query",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            f"{st.session_state['base_url']}/api/unstable/ai/generate-query",
+            headers={"Authorization": f"Bearer {st.session_state['api_key']}", "Content-Type": "application/json"},
             json=data
         )
         if response.status_code != 200:
@@ -385,10 +425,7 @@ if st.session_state.evaluations:
         summary.columns = summary.columns.get_level_values(1)
         summary['Net Positive %'] = summary['Net Positive %'].apply(lambda x: f"{x:.1f}%")
     
-    # Display summary
-    st.markdown("### Evaluation Results")
-    st.dataframe(summary.astype(str))
-    
+
     # Display detailed history
     st.markdown("### Detailed History")
     if 'result' in df_evals.columns:
@@ -407,6 +444,11 @@ if st.session_state.evaluations:
             ['timestamp', 'model', 'prompt', 'feedback', 'note']
         ]
         st.dataframe(history_df.astype(str))
+
+    # Display summary
+    st.markdown("### Evaluation Results")
+    st.dataframe(summary.astype(str))
+    
 
 st.markdown("""
     <div style="text-align: center; color: #666; font-size: 0.8rem; font-style: italic;">
