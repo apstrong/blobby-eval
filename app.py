@@ -46,7 +46,7 @@ def extract_model_id_from_url(url):
 client = OmniAPI(api_key, base_url=base_url)
 
 # Environment configuration
-st.sidebar.header("🔑 Environment Setup")
+st.sidebar.header("⚙️ Configuration")
 topic_name = st.sidebar.text_input("Topic Name",
                                   value=st.session_state.get('topic_name', 'orders_ai'),
                                   help="Enter the topic name for queries")
