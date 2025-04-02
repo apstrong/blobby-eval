@@ -163,32 +163,50 @@ def compare_results(result_df, expected_response):
 
 def query_data(prompt, model_id):
     try:
+        if not prompt or not model_id:
+            st.error("Missing prompt or model ID")
+            return None, None
+
         data = {
             "currentTopicName": st.session_state['topic_name'],
             "modelId": model_id,
             "prompt": prompt
         }
+        
         response = requests.post(
             f"{st.session_state['base_url']}/api/unstable/ai/generate-query",
             headers={"Authorization": f"Bearer {st.session_state['api_key']}", "Content-Type": "application/json"},
             json=data
         )
+        
         if response.status_code != 200:
             st.error(f"API Error: {response.status_code}")
             return None, None
 
         query_dict = response.json()
+        if not query_dict:
+            st.error("Empty response from API")
+            return None, None
+            
         query_result = client.run_query_blocking(query_dict)
         if query_result is None:
             st.error("No query result returned")
             return None, None
 
         result, _ = query_result
+        if result is None:
+            st.error("Query result is None")
+            return None, None
+            
         df = result.to_pandas()
+        if df is None or df.empty:
+            st.warning("Query returned empty result")
+            return pd.DataFrame(), query_dict
+            
         return df, query_dict
 
     except Exception as e:
-        st.error(f"Error: {str(e)}")
+        st.error(f"Error in query_data: {str(e)}")
         return None, None
 
 # Manual Evaluation
@@ -217,9 +235,15 @@ with manual_tab:
                 query = st.session_state[query_key]
 
                 if df is not None:
-                    # Reset index to start at 1
-                    df.index = range(1, len(df) + 1)
-                    st.dataframe(df, use_container_width=True)
+                    try:
+                        # Reset index to start at 1
+                        df.index = range(1, len(df) + 1)
+                        # Convert DataFrame to a format Streamlit can safely display
+                        display_df = df.fillna('')  # Replace NaN with empty string
+                        st.dataframe(display_df, use_container_width=True)
+                    except Exception as e:
+                        st.error(f"Error displaying results: {str(e)}")
+                        st.write("Raw data:", df.to_dict())
                     
                     with st.expander("Query Details"):
                         if query and "query" in query:
