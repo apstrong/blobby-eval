@@ -73,7 +73,7 @@ if not model_2_id:
     st.sidebar.error("Invalid URL format for Model B. Please enter a valid Omni model URL.")
 
 # Mode selection using tabs
-manual_tab, automated_tab = st.tabs(["Manual Evaluation", "Automated Evaluation"])
+manual_tab, automated_tab, prompt_log_tab = st.tabs(["Manual Evaluation", "Automated Evaluation", "Production Monitoring"])
 
 # Initialize session state variables
 if "evaluation_suite" not in st.session_state:
@@ -420,6 +420,12 @@ with automated_tab:
         progress_bar.progress(1.0)
         st.session_state.evaluation_suite["running"] = False
         st.success("🎉 Test Suite Complete! Check the results below.")
+
+# Prompt Log Tab Content
+with prompt_log_tab:
+    st.markdown("""
+    <iframe src="https://omni.embed-omniapp.co/dashboards/433bb1e0" width="100%" height="3200" frameborder="0"></iframe>
+    """, unsafe_allow_html=True)
 
 # Show evaluation history
 if st.session_state.evaluations:
